@@ -4,7 +4,7 @@ import 'package:html/parser.dart' as parser;
 import '../models/video_info.dart';
 import 'base_video_parser.dart';
 
-class SourceBVideoParser implements BaseVideoParser {
+class PornHubParser implements BaseVideoParser {
   @override
   Future<List<VideoInfo>> parse({required String htmlContent, required String baseUrl}) async {
     final document = parser.parse(htmlContent);
@@ -45,7 +45,7 @@ class SourceBVideoParser implements BaseVideoParser {
           ));
         }
       } catch (e) {
-        print('Error parsing an element in SourceBVideoParser: $e');
+        print('Error parsing an element in PornHubParser: $e');
       }
     }
 

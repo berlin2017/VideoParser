@@ -4,7 +4,7 @@ import '../models/video_source.dart';
 import '../models/video_info.dart';
 
 class ScrapingService {
-  Future<List<VideoInfo>> fetchVideoList(VideoSource source) async {
+  Future<List<VideoInfo>> fetchVideoList(VideoSource source, {int page = 1}) async {
     try {
       // Define a standard set of headers to mimic a real browser.
       final headers = {
@@ -15,7 +15,14 @@ class ScrapingService {
         'Upgrade-Insecure-Requests': '1',
       };
 
-      final response = await http.get(Uri.parse(source.baseUrl), headers: headers);
+      String url;
+      if (page > 1 && source.paginatedUrlTemplate != null) {
+        url = source.paginatedUrlTemplate!.replaceAll('%d', page.toString());
+      } else {
+        url = source.baseUrl;
+      }
+
+      final response = await http.get(Uri.parse(url), headers: headers);
 
       if (response.statusCode == 200) {
         return await source.parser.parse(htmlContent: response.body, baseUrl: source.baseUrl);
@@ -23,7 +30,7 @@ class ScrapingService {
         throw Exception('Failed to load page: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error fetching video list for ${source.name}: $e');
+      print('Error fetching video list for ${source.name} (page $page): $e');
       rethrow;
     }
   }
