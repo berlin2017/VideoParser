@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/video_source.dart';
 import '../models/video_info.dart';
 import '../services/scraping_service.dart';
 import 'player_screen.dart';
+import 'cg_player_screen.dart';
 
 class VideoListScreen extends StatefulWidget {
   final VideoSource source;
@@ -73,7 +75,6 @@ class _VideoListScreenState extends State<VideoListScreen> {
       }
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
-      // Revert page number if fetch fails
       _currentPage--;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load more videos: $e')));
     }
@@ -84,6 +85,20 @@ class _VideoListScreenState extends State<VideoListScreen> {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _navigateToPlayer(VideoInfo video) {
+    if (widget.source.name == '51cg') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => CGPlayerScreen(detailPageUrl: video.detailPageUrl, videoTitle: video.title)),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PlayerScreen(detailPageUrl: video.detailPageUrl)),
+      );
+    }
   }
 
   @override
@@ -108,26 +123,79 @@ class _VideoListScreenState extends State<VideoListScreen> {
                       return const Center(child: CircularProgressIndicator());
                     }
                     final video = _videos[index];
-                    return GestureDetector(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => PlayerScreen(detailPageUrl: video.detailPageUrl)),
-                      ),
-                      child: Card(
-                        clipBehavior: Clip.antiAlias,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            Image.network(video.coverUrl, fit: BoxFit.cover, errorBuilder: (c, o, s) => const Icon(Icons.error, size: 180)),
-                            Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black54], begin: Alignment.topCenter, end: Alignment.bottomCenter))),
-                            Positioned(bottom: 8, left: 8, right: 8, child: Text(video.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis)),
-                            if (video.duration.isNotEmpty) Positioned(top: 8, right: 8, child: Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), color: Colors.black.withOpacity(0.7), child: Text(video.duration, style: const TextStyle(color: Colors.white, fontSize: 12)))),
-                          ],
-                        ),
-                      ),
+                    return FocusableCard(
+                      video: video,
+                      onTap: () => _navigateToPlayer(video),
+                      onFocus: () {
+                        int itemsPerRow = (MediaQuery.of(context).size.width / 400).floor().clamp(1, _videos.length);
+                        int totalRows = (_videos.length / itemsPerRow).ceil();
+                        int currentRow = (index / itemsPerRow).floor();
+
+                        // Trigger load if in the last two rows
+                        if (totalRows - currentRow <= 2) {
+                          _loadMoreVideos();
+                        }
+                      },
                     );
                   },
                 ),
+    );
+  }
+}
+
+class FocusableCard extends StatefulWidget {
+  final VideoInfo video;
+  final VoidCallback onTap;
+  final VoidCallback onFocus;
+
+  const FocusableCard({super.key, required this.video, required this.onTap, required this.onFocus});
+
+  @override
+  _FocusableCardState createState() => _FocusableCardState();
+}
+
+class _FocusableCardState extends State<FocusableCard> {
+  bool _isFocused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusableActionDetector(
+      onFocusChange: (isFocused) {
+        setState(() => _isFocused = isFocused);
+        if (isFocused) {
+          widget.onFocus();
+        }
+      },
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) => widget.onTap()),
+      },
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          shape: _isFocused
+              ? RoundedRectangleBorder(side: BorderSide(color: Theme.of(context).colorScheme.primary, width: 3))
+              : null,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.network(
+                widget.video.coverUrl,
+                fit: BoxFit.cover,
+                headers: const {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+                },
+                errorBuilder: (c, o, s) => const Icon(Icons.error, size: 180),
+              ),
+              if (_isFocused)
+                Container(color: Colors.black.withOpacity(0.4)),
+              Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black54], begin: Alignment.topCenter, end: Alignment.bottomCenter))),
+              Positioned(bottom: 8, left: 8, right: 8, child: Text(widget.video.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis)),
+              if (widget.video.duration.isNotEmpty) Positioned(top: 8, right: 8, child: Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), color: Colors.black.withOpacity(0.7), child: Text(widget.video.duration, style: const TextStyle(color: Colors.white, fontSize: 12)))),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

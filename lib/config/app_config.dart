@@ -2,6 +2,7 @@
 import '../models/video_source.dart';
 import '../parsers/xvideos_parser.dart';
 import '../parsers/pornhub_parser.dart';
+import '../parsers/cg_parser.dart';
 
 class AppConfig {
   static final List<VideoSource> videoSources = [
@@ -16,6 +17,12 @@ class AppConfig {
       baseUrl: 'https://www.pornhub.com', // This is a placeholder URL
       paginatedUrlTemplate: 'https://www.pornhub.com/video?page=%d', // Example template
       parser: PornHubParser(),
+    ),
+    VideoSource(
+      name: '51cg',
+      baseUrl: 'https://case.ryhvlsd.com/',
+      paginatedUrlTemplate: 'https://case.ryhvlsd.com/page/%d/',
+      parser: CGParser(),
     ),
   ];
 }

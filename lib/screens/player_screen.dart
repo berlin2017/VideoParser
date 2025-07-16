@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:provider/provider.dart';
@@ -19,18 +20,7 @@ class PlayerScreen extends StatefulWidget {
 class _PlayerScreenState extends State<PlayerScreen> {
   late final Player _player = Player(
     configuration: const PlayerConfiguration(protocolWhitelist: [
-      'file',
-      'http',
-      'https',
-      'tcp',
-      'tls',
-      'crypto',
-      'hls',
-      'applehttp',
-      'udp',
-      'rtp',
-      'data',
-      'httpproxy'
+      'file', 'http', 'https', 'tcp', 'tls', 'crypto', 'hls', 'applehttp', 'udp', 'rtp', 'data', 'httpproxy'
     ]),
   );
   late final VideoController _videoController;
@@ -46,7 +36,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void initState() {
     super.initState();
     _videoController = VideoController(_player);
-
     final apiService = Provider.of<LocalApiService>(context, listen: false);
     _playbackFuture = apiService.fetchPlaybackDetails(widget.detailPageUrl);
 
@@ -64,7 +53,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _startHideOverlayTimer() {
     _hideOverlayTimer?.cancel();
     _hideOverlayTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted) setState(() => _isOverlayVisible = false);
+      if (mounted && _player.state.playing) {
+        setState(() => _isOverlayVisible = false);
+      }
     });
   }
 
@@ -86,29 +77,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _playFormat(app_models.VideoFormat format) async {
     setState(() => _currentFormat = format);
-
     var url = format.url;
     if (!url.startsWith('http')) {
       try {
         final detailUri = Uri.parse(widget.detailPageUrl);
         url = detailUri.resolve(url).toString();
       } catch (e) {
-        if (mounted) {
-          setState(() {
-            _playerError = 'Error resolving video URL: $e';
-          });
-        }
+        if (mounted) setState(() => _playerError = 'Error resolving video URL: $e');
         return;
       }
     }
-
-    final media = Media(
-      url,
-      httpHeaders: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
-        'Referer': widget.detailPageUrl,
-      },
-    );
+    final media = Media(url, httpHeaders: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+      'Referer': widget.detailPageUrl,
+    });
     await _player.open(media, play: true);
   }
 
@@ -188,7 +170,12 @@ class CustomVideoControls extends StatelessWidget {
         children: [
           Row(
             children: [
-              BackButton(color: Colors.white),
+              FocusableActionDetector(
+                child: BackButton(color: Colors.white),
+                actions: {
+                  ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) => Navigator.pop(context)),
+                },
+              ),
               Expanded(
                 child: Text(details.title, style: const TextStyle(color: Colors.white, fontSize: 16), overflow: TextOverflow.ellipsis),
               ),
@@ -198,7 +185,7 @@ class CustomVideoControls extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              IconButton(icon: const Icon(Icons.replay_10, color: Colors.white, size: 36), onPressed: () {
+              FocusableIconButton(icon: Icons.replay_10, onPressed: () {
                 final currentPosition = player.state.position;
                 final newPosition = currentPosition - const Duration(seconds: 10);
                 player.seek(newPosition < Duration.zero ? Duration.zero : newPosition);
@@ -208,11 +195,15 @@ class CustomVideoControls extends StatelessWidget {
                 stream: player.stream.playing,
                 builder: (context, snapshot) {
                   final isPlaying = snapshot.data ?? false;
-                  return IconButton(icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.white, size: 64), onPressed: () => player.playOrPause());
+                  return FocusableIconButton(
+                    icon: isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                    iconSize: 64,
+                    onPressed: () => player.playOrPause(),
+                  );
                 },
               ),
               const SizedBox(width: 40),
-              IconButton(icon: const Icon(Icons.forward_10, color: Colors.white, size: 36), onPressed: () {
+              FocusableIconButton(icon: Icons.forward_10, onPressed: () {
                 final currentPosition = player.state.position;
                 final videoDuration = player.state.duration;
                 final newPosition = currentPosition + const Duration(seconds: 10);
@@ -250,12 +241,12 @@ class CustomVideoControls extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    PopupMenuButton<double>(
+                    FocusablePopupMenuButton<double>(
                       onSelected: (rate) => player.setRate(rate),
                       itemBuilder: (context) => [0.5, 1.0, 1.5, 2.0].map((rate) => PopupMenuItem(value: rate, child: Text('${rate}x'))).toList(),
                       child: Row(children: [const Icon(Icons.speed, color: Colors.white), const SizedBox(width: 4), StreamBuilder<double>(stream: player.stream.rate, builder: (context, snapshot) => Text('${snapshot.data ?? 1.0}x', style: const TextStyle(color: Colors.white)))]),
                     ),
-                    PopupMenuButton<app_models.VideoFormat>(
+                    FocusablePopupMenuButton<app_models.VideoFormat>(
                       onSelected: onQualityChanged,
                       itemBuilder: (context) => details.formats.map((format) => PopupMenuItem(value: format, child: Text(format.displayName))).toList(),
                       child: Row(children: [const Icon(Icons.hd, color: Colors.white), const SizedBox(width: 4), Text(currentFormat?.displayName ?? 'Quality', style: const TextStyle(color: Colors.white))]),
@@ -266,6 +257,93 @@ class CustomVideoControls extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class FocusableIconButton extends StatefulWidget {
+  final IconData icon;
+  final double iconSize;
+  final VoidCallback onPressed;
+
+  const FocusableIconButton({super.key, required this.icon, this.iconSize = 36, required this.onPressed});
+
+  @override
+  _FocusableIconButtonState createState() => _FocusableIconButtonState();
+}
+
+class _FocusableIconButtonState extends State<FocusableIconButton> {
+  bool _isFocused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusableActionDetector(
+      onFocusChange: (isFocused) => setState(() => _isFocused = isFocused),
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) => widget.onPressed()),
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: _isFocused ? Theme.of(context).colorScheme.primary.withOpacity(0.5) : Colors.transparent,
+        ),
+        child: IconButton(
+          icon: Icon(widget.icon, color: Colors.white, size: widget.iconSize),
+          onPressed: widget.onPressed,
+        ),
+      ),
+    );
+  }
+}
+
+class FocusablePopupMenuButton<T> extends StatefulWidget {
+  final Function(T) onSelected;
+  final List<PopupMenuEntry<T>> Function(BuildContext) itemBuilder;
+  final Widget child;
+
+  const FocusablePopupMenuButton({super.key, required this.onSelected, required this.itemBuilder, required this.child});
+
+  @override
+  _FocusablePopupMenuButtonState<T> createState() => _FocusablePopupMenuButtonState<T>();
+}
+
+class _FocusablePopupMenuButtonState<T> extends State<FocusablePopupMenuButton<T>> {
+  bool _isFocused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return FocusableActionDetector(
+      onFocusChange: (isFocused) => setState(() => _isFocused = isFocused),
+      actions: {
+        ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) {
+          final RenderBox button = context.findRenderObject() as RenderBox;
+          final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+          final RelativeRect position = RelativeRect.fromRect(
+            Rect.fromPoints(
+              button.localToGlobal(Offset.zero, ancestor: overlay),
+              button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+            ),
+            Offset.zero & overlay.size,
+          );
+          showMenu<T>(
+            context: context,
+            position: position,
+            items: widget.itemBuilder(context),
+          ).then((T? newValue) {
+            if (newValue != null) {
+              widget.onSelected(newValue);
+            }
+          });
+        }),
+      },
+      child: Container(
+        padding: const EdgeInsets.all(8.0),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: _isFocused ? Theme.of(context).colorScheme.primary.withOpacity(0.5) : Colors.transparent,
+        ),
+        child: widget.child,
       ),
     );
   }
