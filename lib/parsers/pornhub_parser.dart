@@ -51,4 +51,10 @@ class PornHubParser implements BaseVideoParser {
 
     return videos;
   }
+
+  @override
+  Future<List<String>> parseDetail({required String htmlContent}) async {
+    // TODO: implement parseDetail
+    return [];
+  }
 }

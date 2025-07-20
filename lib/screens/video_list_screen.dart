@@ -179,14 +179,17 @@ class _FocusableCardState extends State<FocusableCard> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Image.network(
-                widget.video.coverUrl,
-                fit: BoxFit.cover,
-                headers: const {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
-                },
-                errorBuilder: (c, o, s) => const Icon(Icons.error, size: 180),
-              ),
+              if (widget.video.coverUrl.isNotEmpty)
+                Image.network(
+                  widget.video.coverUrl,
+                  fit: BoxFit.cover,
+                  headers: const {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+                  },
+                  errorBuilder: (c, o, s) => const Icon(Icons.error, size: 180),
+                )
+              else
+                Container(color: Colors.grey[800]),
               if (_isFocused)
                 Container(color: Colors.black.withOpacity(0.4)),
               Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black54], begin: Alignment.topCenter, end: Alignment.bottomCenter))),

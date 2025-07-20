@@ -311,39 +311,44 @@ class FocusablePopupMenuButton<T> extends StatefulWidget {
 class _FocusablePopupMenuButtonState<T> extends State<FocusablePopupMenuButton<T>> {
   bool _isFocused = false;
 
+  void _showMenu(BuildContext context) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    showMenu<T>(
+      context: context,
+      position: position,
+      items: widget.itemBuilder(context),
+    ).then((T? newValue) {
+      if (newValue != null) {
+        widget.onSelected(newValue);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FocusableActionDetector(
-      onFocusChange: (isFocused) => setState(() => _isFocused = isFocused),
-      actions: {
-        ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) {
-          final RenderBox button = context.findRenderObject() as RenderBox;
-          final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-          final RelativeRect position = RelativeRect.fromRect(
-            Rect.fromPoints(
-              button.localToGlobal(Offset.zero, ancestor: overlay),
-              button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
-            ),
-            Offset.zero & overlay.size,
-          );
-          showMenu<T>(
-            context: context,
-            position: position,
-            items: widget.itemBuilder(context),
-          ).then((T? newValue) {
-            if (newValue != null) {
-              widget.onSelected(newValue);
-            }
-          });
-        }),
-      },
-      child: Container(
-        padding: const EdgeInsets.all(8.0),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: _isFocused ? Theme.of(context).colorScheme.primary.withOpacity(0.5) : Colors.transparent,
+    return GestureDetector(
+      onTap: () => _showMenu(context),
+      child: FocusableActionDetector(
+        onFocusChange: (isFocused) => setState(() => _isFocused = isFocused),
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) => _showMenu(context)),
+        },
+        child: Container(
+          padding: const EdgeInsets.all(8.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            color: _isFocused ? Theme.of(context).colorScheme.primary.withOpacity(0.5) : Colors.transparent,
+          ),
+          child: widget.child,
         ),
-        child: widget.child,
       ),
     );
   }

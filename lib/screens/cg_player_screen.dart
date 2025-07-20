@@ -1,10 +1,11 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import '../services/cg_detail_parser_service.dart';
-import 'player_screen.dart'; // Re-use the focusable widgets from player_screen
+import '../services/scraping_service.dart';
+import 'player_screen.dart'; // Re-use the focusable widgets
 
 class CGPlayerScreen extends StatefulWidget {
   final String detailPageUrl;
@@ -23,12 +24,15 @@ class _CGPlayerScreenState extends State<CGPlayerScreen> {
     ]),
   );
   late final VideoController _videoController;
-  final CGDetailParserService _parserService = CGDetailParserService();
+  final ScrapingService _scrapingService = ScrapingService();
 
+  Future<List<String>>? _videoUrlsFuture;
   List<String> _videoUrls = [];
   int _currentSourceIndex = 0;
+  final List<double> _speeds = [0.5, 1.0, 1.5, 2.0];
+  int _currentSpeedIndex = 1;
   String? _playerError;
-  bool _isLoading = true;
+
   bool _isOverlayVisible = true;
   Timer? _hideOverlayTimer;
 
@@ -36,54 +40,23 @@ class _CGPlayerScreenState extends State<CGPlayerScreen> {
   void initState() {
     super.initState();
     _videoController = VideoController(_player);
-    _loadVideoSources();
-    _startHideOverlayTimer();
-  }
+    _videoUrlsFuture = _scrapingService.fetchVideoDetail(widget.detailPageUrl, '51cg');
 
-  Future<void> _loadVideoSources() async {
-    setState(() {
-      _isLoading = true;
-      _playerError = null;
+    _videoUrlsFuture?.then((urls) {
+      if (kDebugMode) {
+        print('--- 51CG Video URLs ---');
+        print(urls);
+        print('--- End 51CG Video URLs ---');
+      }
+      if (urls.isNotEmpty) {
+        setState(() => _videoUrls = urls);
+        _playCurrentSource();
+      }
+    }).catchError((e) {
+      if (mounted) setState(() => _playerError = e.toString());
     });
-    try {
-      final urls = await _parserService.parseDetailpage(widget.detailPageUrl);
-      if (mounted) {
-        setState(() {
-          if (urls.isEmpty) {
-            _playerError = "Failed to find any video sources on the page.";
-          } else {
-            _videoUrls = urls;
-            _playCurrentSource();
-          }
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _playerError = "Error loading video sources: $e";
-          _isLoading = false;
-        });
-      }
-    }
-  }
 
-  Future<void> _playCurrentSource() async {
-    if (_videoUrls.isEmpty) return;
-    final url = _videoUrls[_currentSourceIndex];
-    await _player.open(Media(url), play: true);
-    if (mounted) {
-      setState(() {}); // Rebuild to update the source text
-    }
-  }
-
-  void _switchToNextSource() {
-    if (_videoUrls.length > 1) {
-      setState(() {
-        _currentSourceIndex = (_currentSourceIndex + 1) % _videoUrls.length;
-      });
-      _playCurrentSource();
-    }
+    _startHideOverlayTimer();
   }
 
   void _startHideOverlayTimer() {
@@ -102,6 +75,29 @@ class _CGPlayerScreenState extends State<CGPlayerScreen> {
     }
   }
 
+  Future<void> _playCurrentSource() async {
+    if (_videoUrls.isEmpty) return;
+    final url = _videoUrls[_currentSourceIndex];
+    await _player.open(Media(url), play: true);
+    if (mounted) setState(() {});
+  }
+
+  void _switchToNextSource() {
+    if (_videoUrls.length > 1) {
+      setState(() {
+        _currentSourceIndex = (_currentSourceIndex + 1) % _videoUrls.length;
+      });
+      _playCurrentSource();
+    }
+  }
+
+  void _switchToNextSpeed() {
+    setState(() {
+      _currentSpeedIndex = (_currentSpeedIndex + 1) % _speeds.length;
+    });
+    _player.setRate(_speeds[_currentSpeedIndex]);
+  }
+
   @override
   void dispose() {
     _player.dispose();
@@ -116,20 +112,31 @@ class _CGPlayerScreenState extends State<CGPlayerScreen> {
       body: SafeArea(
         child: GestureDetector(
           onTap: _toggleOverlay,
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _playerError != null
-                  ? Center(child: Text(_playerError!, style: const TextStyle(color: Colors.white)))
-                  : Stack(
-                      children: [
-                        Video(controller: _videoController),
-                        AnimatedOpacity(
-                          opacity: _isOverlayVisible ? 1.0 : 0.0,
-                          duration: const Duration(milliseconds: 300),
-                          child: _buildControls(context),
-                        ),
-                      ],
-                    ),
+          child: FutureBuilder<List<String>>(
+            future: _videoUrlsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError || _playerError != null) {
+                return Center(child: Text(_playerError ?? snapshot.error.toString(), style: const TextStyle(color: Colors.white)));
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Center(child: Text('No video sources found.', style: const TextStyle(color: Colors.white)));
+              }
+
+              return Stack(
+                children: [
+                  Video(controller: _videoController),
+                  AnimatedOpacity(
+                    opacity: _isOverlayVisible ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: _buildControls(context),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -151,16 +158,6 @@ class _CGPlayerScreenState extends State<CGPlayerScreen> {
               Expanded(
                 child: Text(widget.videoTitle, style: const TextStyle(color: Colors.white, fontSize: 16), overflow: TextOverflow.ellipsis),
               ),
-              if (_videoUrls.length > 1)
-                FocusableActionDetector(
-                  actions: {
-                    ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) => _switchToNextSource()),
-                  },
-                  child: TextButton(
-                    onPressed: _switchToNextSource,
-                    child: Text('Switch Source (${_currentSourceIndex + 1}/${_videoUrls.length})'),
-                  ),
-                ),
             ],
           ),
           const Spacer(),
@@ -169,8 +166,7 @@ class _CGPlayerScreenState extends State<CGPlayerScreen> {
             children: [
               FocusableIconButton(icon: Icons.replay_10, onPressed: () {
                 final currentPosition = _player.state.position;
-                final newPosition = currentPosition - const Duration(seconds: 10);
-                _player.seek(newPosition < Duration.zero ? Duration.zero : newPosition);
+                _player.seek(currentPosition - const Duration(seconds: 10));
               }),
               const SizedBox(width: 40),
               StreamBuilder<bool>(
@@ -187,34 +183,56 @@ class _CGPlayerScreenState extends State<CGPlayerScreen> {
               const SizedBox(width: 40),
               FocusableIconButton(icon: Icons.forward_10, onPressed: () {
                 final currentPosition = _player.state.position;
-                final videoDuration = _player.state.duration;
-                final newPosition = currentPosition + const Duration(seconds: 10);
-                _player.seek(newPosition > videoDuration ? videoDuration : newPosition);
+                _player.seek(currentPosition + const Duration(seconds: 10));
               }),
             ],
           ),
           const Spacer(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
+            child: Column(
               children: [
-                StreamBuilder<Duration>(stream: _player.stream.position, builder: (context, snapshot) => Text((snapshot.data ?? Duration.zero).toString().split('.').first.padLeft(8, '0'), style: const TextStyle(color: Colors.white))),
-                Expanded(
-                  child: StreamBuilder<Duration>(
-                    stream: _player.stream.position,
-                    builder: (context, positionSnapshot) {
-                      final position = positionSnapshot.data ?? Duration.zero;
-                      final duration = _player.state.duration;
-                      return Slider(
-                        value: position.inSeconds.toDouble(),
-                        min: 0.0,
-                        max: duration.inSeconds.toDouble(),
-                        onChanged: (value) => _player.seek(Duration(seconds: value.toInt())),
-                      );
-                    },
-                  ),
+                Row(
+                  children: [
+                    StreamBuilder<Duration>(stream: _player.stream.position, builder: (context, snapshot) => Text((snapshot.data ?? Duration.zero).toString().split('.').first.padLeft(8, '0'), style: const TextStyle(color: Colors.white))),
+                    Expanded(
+                      child: StreamBuilder<Duration>(
+                        stream: _player.stream.position,
+                        builder: (context, positionSnapshot) {
+                          final position = positionSnapshot.data ?? Duration.zero;
+                          final duration = _player.state.duration;
+                          return Slider(
+                            value: position.inSeconds.toDouble(),
+                            min: 0.0,
+                            max: duration.inSeconds.toDouble().clamp(0.0, double.infinity),
+                            onChanged: (value) => _player.seek(Duration(seconds: value.toInt())),
+                          );
+                        },
+                      ),
+                    ),
+                    Text((_player.state.duration).toString().split('.').first.padLeft(8, '0'), style: const TextStyle(color: Colors.white)),
+                  ],
                 ),
-                Text((_player.state.duration).toString().split('.').first.padLeft(8, '0'), style: const TextStyle(color: Colors.white)),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    FocusablePopupMenuButton<double>(
+                      onSelected: (rate) => _player.setRate(rate),
+                      itemBuilder: (context) => [0.5, 1.0, 1.5, 2.0].map((rate) => PopupMenuItem(value: rate, child: Text('${rate}x'))).toList(),
+                      child: Row(children: [const Icon(Icons.speed, color: Colors.white), const SizedBox(width: 4), StreamBuilder<double>(stream: _player.stream.rate, builder: (context, snapshot) => Text('${snapshot.data ?? 1.0}x', style: const TextStyle(color: Colors.white)))]),
+                    ),
+                    if (_videoUrls.length > 1)
+                      FocusablePopupMenuButton<int>(
+                        onSelected: (index) {
+                          setState(() => _currentSourceIndex = index);
+                          _playCurrentSource();
+                        },
+                        itemBuilder: (context) => List.generate(_videoUrls.length, (index) => PopupMenuItem(value: index, child: Text('Source ${index + 1}'))),
+                        child: Row(children: [const Icon(Icons.video_library, color: Colors.white), const SizedBox(width: 4), Text('Source ${_currentSourceIndex + 1}', style: const TextStyle(color: Colors.white))]),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),

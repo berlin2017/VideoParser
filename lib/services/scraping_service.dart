@@ -2,6 +2,7 @@
 import 'package:http/http.dart' as http;
 import '../models/video_source.dart';
 import '../models/video_info.dart';
+import '../config/app_config.dart';
 
 class ScrapingService {
   Future<List<VideoInfo>> fetchVideoList(VideoSource source, {int page = 1}) async {
@@ -31,6 +32,26 @@ class ScrapingService {
       }
     } catch (e) {
       print('Error fetching video list for ${source.name} (page $page): $e');
+      rethrow;
+    }
+  }
+
+  Future<List<String>> fetchVideoDetail(String detailPageUrl, String sourceName) async {
+    try {
+      final headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+      };
+
+      final response = await http.get(Uri.parse(detailPageUrl), headers: headers);
+
+      if (response.statusCode == 200) {
+        final source = AppConfig.videoSources.firstWhere((s) => s.name == sourceName);
+        return await source.parser.parseDetail(htmlContent: response.body);
+      } else {
+        throw Exception('Failed to load page: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching video detail for $detailPageUrl: $e');
       rethrow;
     }
   }

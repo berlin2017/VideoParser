@@ -20,8 +20,8 @@ class AppConfig {
     ),
     VideoSource(
       name: '51cg',
-      baseUrl: 'https://case.ryhvlsd.com/',
-      paginatedUrlTemplate: 'https://case.ryhvlsd.com/page/%d/',
+      baseUrl: 'https://51cg1.com/',
+      paginatedUrlTemplate: 'https://51cg1.com/page/%d/',
       parser: CGParser(),
     ),
   ];
