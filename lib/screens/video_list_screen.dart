@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/video_source.dart';
@@ -157,6 +158,44 @@ class FocusableCard extends StatefulWidget {
 class _FocusableCardState extends State<FocusableCard> {
   bool _isFocused = false;
 
+  Widget _buildCoverImage() {
+    if (widget.video.coverUrl.isEmpty) {
+      return Container(color: Colors.grey[800]);
+    }
+    print('Building image for: ${widget.video.coverUrl}'); // 添加调试信息
+
+    if (widget.video.coverUrl.startsWith('data:image')) {
+      try {
+        final parts = widget.video.coverUrl.split(',');
+        if (parts.length == 2) {
+          final imageData = base64Decode(parts[1]);
+          print('Decoded base64 image size: ${imageData.lengthInBytes}'); // 添加调试信息
+          return Image.memory(
+            imageData,
+            fit: BoxFit.cover,
+            errorBuilder: (c, o, s) {
+              print('Error displaying base64 image: $o'); // 添加调试信息
+              return const Icon(Icons.error, size: 180);
+            },
+          );
+        }
+      } catch (e) {
+        print('Error decoding base64 image: $e');
+        return const Icon(Icons.error, size: 180);
+      }
+    }
+
+    return Image.network(
+      widget.video.coverUrl,
+      fit: BoxFit.cover,
+      headers: const {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+      },
+      errorBuilder: (c, o, s) => const Icon(Icons.error, size: 180),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FocusableActionDetector(
@@ -179,17 +218,7 @@ class _FocusableCardState extends State<FocusableCard> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (widget.video.coverUrl.isNotEmpty)
-                Image.network(
-                  widget.video.coverUrl,
-                  fit: BoxFit.cover,
-                  headers: const {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
-                  },
-                  errorBuilder: (c, o, s) => const Icon(Icons.error, size: 180),
-                )
-              else
-                Container(color: Colors.grey[800]),
+              _buildCoverImage(),
               if (_isFocused)
                 Container(color: Colors.black.withOpacity(0.4)),
               Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black54], begin: Alignment.topCenter, end: Alignment.bottomCenter))),

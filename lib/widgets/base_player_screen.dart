@@ -3,24 +3,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import '../models/video_format.dart' as app_models;
 
 class BasePlayerScreen extends StatefulWidget {
-  final List<String> videoUrls;
   final String videoTitle;
+  final List<app_models.VideoFormat> formats;
+  final String? detailPageUrl; // For referer header
 
-  const BasePlayerScreen({super.key, required this.videoUrls, required this.videoTitle});
+  const BasePlayerScreen({
+    super.key,
+    required this.videoTitle,
+    required this.formats,
+    this.detailPageUrl,
+  });
 
   @override
   _BasePlayerScreenState createState() => _BasePlayerScreenState();
 }
 
 class _BasePlayerScreenState extends State<BasePlayerScreen> {
-  late final Player _player = Player();
+  late final Player _player = Player(
+    configuration: const PlayerConfiguration(protocolWhitelist: [
+      'file', 'http', 'https', 'tcp', 'tls', 'crypto', 'hls', 'applehttp', 'udp', 'rtp', 'data', 'httpproxy'
+    ]),
+  );
   late final VideoController _videoController;
 
-  int _currentSourceIndex = 0;
-  final List<double> _speeds = [0.5, 1.0, 1.5, 2.0];
-  int _currentSpeedIndex = 1;
+  app_models.VideoFormat? _currentFormat;
+  String? _playerError;
+
   bool _isOverlayVisible = true;
   Timer? _hideOverlayTimer;
 
@@ -28,33 +39,16 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
   void initState() {
     super.initState();
     _videoController = VideoController(_player);
-    _playCurrentSource();
-    _startHideOverlayTimer();
-  }
 
-  Future<void> _playCurrentSource() async {
-    if (widget.videoUrls.isEmpty) return;
-    final url = widget.videoUrls[_currentSourceIndex];
-    await _player.open(Media(url), play: true);
-    if (mounted) {
-      setState(() {});
-    }
-  }
-
-  void _switchToNextSource() {
-    if (widget.videoUrls.length > 1) {
+    if (widget.formats.isNotEmpty) {
+      _playFormat(_getBestFormat(widget.formats));
+    } else {
       setState(() {
-        _currentSourceIndex = (_currentSourceIndex + 1) % widget.videoUrls.length;
+        _playerError = "No video formats available.";
       });
-      _playCurrentSource();
     }
-  }
 
-  void _switchToNextSpeed() {
-    setState(() {
-      _currentSpeedIndex = (_currentSpeedIndex + 1) % _speeds.length;
-    });
-    _player.setRate(_speeds[_currentSpeedIndex]);
+    _startHideOverlayTimer();
   }
 
   void _startHideOverlayTimer() {
@@ -73,6 +67,37 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
     }
   }
 
+  app_models.VideoFormat _getBestFormat(List<app_models.VideoFormat> formats) {
+    formats.sort((a, b) {
+      int aRes = int.tryParse(a.resolution?.split('x').last ?? '0') ?? 0;
+      int bRes = int.tryParse(b.resolution?.split('x').last ?? '0') ?? 0;
+      return bRes.compareTo(aRes);
+    });
+    return formats.firstWhere((f) => f.protocol.contains('m3u8'), orElse: () => formats.first);
+  }
+
+  Future<void> _playFormat(app_models.VideoFormat format) async {
+    setState(() => _currentFormat = format);
+    var url = format.url;
+    if (!url.startsWith('http') && widget.detailPageUrl != null) {
+      try {
+        final detailUri = Uri.parse(widget.detailPageUrl!);
+        url = detailUri.resolve(url).toString();
+      } catch (e) {
+        if (mounted) setState(() => _playerError = 'Error resolving video URL: $e');
+        return;
+      }
+    }
+    final httpHeaders = <String, String>{
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+    };
+    if (widget.detailPageUrl != null) {
+      httpHeaders['Referer'] = widget.detailPageUrl!;
+    }
+    final media = Media(url, httpHeaders: httpHeaders);
+    await _player.open(media, play: true);
+  }
+
   @override
   void dispose() {
     _player.dispose();
@@ -87,23 +112,61 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
       body: SafeArea(
         child: GestureDetector(
           onTap: _toggleOverlay,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Video(controller: _videoController),
-              AnimatedOpacity(
-                opacity: _isOverlayVisible ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: _buildControls(context),
-              ),
-            ],
+          child: Builder(
+            builder: (context) {
+              if (_playerError != null) {
+                return Center(child: Text(_playerError!, style: const TextStyle(color: Colors.white)));
+              }
+              if (widget.formats.isEmpty) {
+                return const Center(child: Text('No video sources found.', style: TextStyle(color: Colors.white)));
+              }
+
+              return Stack(
+                children: [
+                  Video(controller: _videoController),
+                  AnimatedOpacity(
+                    opacity: _isOverlayVisible ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 300),
+                    child: CustomVideoControls(
+                      player: _player,
+                      videoTitle: widget.videoTitle,
+                      formats: widget.formats,
+                      currentFormat: _currentFormat,
+                      onQualityChanged: (format) => _playFormat(format),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildControls(BuildContext context) {
+class CustomVideoControls extends StatelessWidget {
+  final Player player;
+  final String videoTitle;
+  final List<app_models.VideoFormat> formats;
+  final app_models.VideoFormat? currentFormat;
+  final ValueChanged<app_models.VideoFormat> onQualityChanged;
+
+  const CustomVideoControls({
+    super.key,
+    required this.player,
+    required this.videoTitle,
+    required this.formats,
+    required this.currentFormat,
+    required this.onQualityChanged,
+  });
+
+  String _formatDuration(Duration duration) {
+    return duration.toString().split('.').first.padLeft(8, '0');
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       color: Colors.black.withOpacity(0.5),
       child: Column(
@@ -117,7 +180,7 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
                 },
               ),
               Expanded(
-                child: Text(widget.videoTitle, style: const TextStyle(color: Colors.white, fontSize: 16), overflow: TextOverflow.ellipsis),
+                child: Text(videoTitle, style: const TextStyle(color: Colors.white, fontSize: 16), overflow: TextOverflow.ellipsis),
               ),
             ],
           ),
@@ -126,68 +189,72 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               FocusableIconButton(icon: Icons.replay_10, onPressed: () {
-                final currentPosition = _player.state.position;
-                _player.seek(currentPosition - const Duration(seconds: 10));
+                final currentPosition = player.state.position;
+                final newPosition = currentPosition - const Duration(seconds: 10);
+                player.seek(newPosition < Duration.zero ? Duration.zero : newPosition);
               }),
               const SizedBox(width: 40),
               StreamBuilder<bool>(
-                stream: _player.stream.playing,
+                stream: player.stream.playing,
                 builder: (context, snapshot) {
                   final isPlaying = snapshot.data ?? false;
                   return FocusableIconButton(
                     icon: isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
                     iconSize: 64,
-                    onPressed: () => _player.playOrPause(),
+                    onPressed: () => player.playOrPause(),
                   );
                 },
               ),
               const SizedBox(width: 40),
               FocusableIconButton(icon: Icons.forward_10, onPressed: () {
-                final currentPosition = _player.state.position;
-                _player.seek(currentPosition + const Duration(seconds: 10));
+                final currentPosition = player.state.position;
+                final videoDuration = player.state.duration;
+                final newPosition = currentPosition + const Duration(seconds: 10);
+                player.seek(newPosition > videoDuration ? videoDuration : newPosition);
               }),
             ],
           ),
           const Spacer(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
+            child: Column(
               children: [
-                StreamBuilder<Duration>(stream: _player.stream.position, builder: (context, snapshot) => Text((snapshot.data ?? Duration.zero).toString().split('.').first.padLeft(8, '0'), style: const TextStyle(color: Colors.white))),
-                Expanded(
-                  child: StreamBuilder<Duration>(
-                    stream: _player.stream.position,
-                    builder: (context, positionSnapshot) {
-                      final position = positionSnapshot.data ?? Duration.zero;
-                      final duration = _player.state.duration;
-                      return Slider(
-                        value: position.inSeconds.toDouble(),
-                        min: 0.0,
-                        max: duration.inSeconds.toDouble().clamp(0.0, double.infinity),
-                        onChanged: (value) => _player.seek(Duration(seconds: value.toInt())),
-                      );
-                    },
-                  ),
-                ),
-                Text((_player.state.duration).toString().split('.').first.padLeft(8, '0'), style: const TextStyle(color: Colors.white)),
-                if (widget.videoUrls.length > 1)
-                  FocusableActionDetector(
-                    actions: {
-                      ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) => _switchToNextSource()),
-                    },
-                    child: TextButton(
-                      onPressed: _switchToNextSource,
-                      child: Text('Source (${_currentSourceIndex + 1}/${widget.videoUrls.length})'),
+                Row(
+                  children: [
+                    StreamBuilder<Duration>(stream: player.stream.position, builder: (context, snapshot) => Text(_formatDuration(snapshot.data ?? Duration.zero), style: const TextStyle(color: Colors.white))),
+                    Expanded(
+                      child: StreamBuilder<Duration>(
+                        stream: player.stream.position,
+                        builder: (context, positionSnapshot) {
+                          final position = positionSnapshot.data ?? Duration.zero;
+                          final duration = player.state.duration;
+                          return Slider(
+                            value: position.inSeconds.toDouble(),
+                            min: 0.0,
+                            max: duration.inSeconds.toDouble(),
+                            onChanged: (value) => player.seek(Duration(seconds: value.toInt())),
+                          );
+                        },
+                      ),
                     ),
-                  ),
-                FocusableActionDetector(
-                  actions: {
-                    ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) => _switchToNextSpeed()),
-                  },
-                  child: TextButton(
-                    onPressed: _switchToNextSpeed,
-                    child: Text('${_speeds[_currentSpeedIndex]}x'),
-                  ),
+                    Text(_formatDuration(player.state.duration), style: const TextStyle(color: Colors.white)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    FocusablePopupMenuButton<double>(
+                      onSelected: (rate) => player.setRate(rate),
+                      itemBuilder: (context) => [0.5, 1.0, 1.5, 2.0].map((rate) => PopupMenuItem(value: rate, child: Text('${rate}x'))).toList(),
+                      child: Row(children: [const Icon(Icons.speed, color: Colors.white), const SizedBox(width: 4), StreamBuilder<double>(stream: player.stream.rate, builder: (context, snapshot) => Text('${snapshot.data ?? 1.0}x', style: const TextStyle(color: Colors.white)))]),
+                    ),
+                    FocusablePopupMenuButton<app_models.VideoFormat>(
+                      onSelected: onQualityChanged,
+                      itemBuilder: (context) => formats.map((format) => PopupMenuItem(value: format, child: Text(format.displayName))).toList(),
+                      child: Row(children: [const Icon(Icons.hd, color: Colors.white), const SizedBox(width: 4), Text(currentFormat?.displayName ?? 'Quality', style: const TextStyle(color: Colors.white))]),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -203,7 +270,7 @@ class FocusableIconButton extends StatefulWidget {
   final double iconSize;
   final VoidCallback onPressed;
 
-  const FocusableIconButton({super.key, required this.icon, this.iconSize = 32, required this.onPressed});
+  const FocusableIconButton({super.key, required this.icon, this.iconSize = 36, required this.onPressed});
 
   @override
   _FocusableIconButtonState createState() => _FocusableIconButtonState();
@@ -220,14 +287,70 @@ class _FocusableIconButtonState extends State<FocusableIconButton> {
         ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) => widget.onPressed()),
       },
       child: Container(
-        padding: const EdgeInsets.all(8.0),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: _isFocused ? Colors.white.withOpacity(0.3) : Colors.transparent,
+          color: _isFocused ? Theme.of(context).colorScheme.primary.withOpacity(0.5) : Colors.transparent,
         ),
         child: IconButton(
           icon: Icon(widget.icon, color: Colors.white, size: widget.iconSize),
           onPressed: widget.onPressed,
+        ),
+      ),
+    );
+  }
+}
+
+class FocusablePopupMenuButton<T> extends StatefulWidget {
+  final Function(T) onSelected;
+  final List<PopupMenuEntry<T>> Function(BuildContext) itemBuilder;
+  final Widget child;
+
+  const FocusablePopupMenuButton({super.key, required this.onSelected, required this.itemBuilder, required this.child});
+
+  @override
+  _FocusablePopupMenuButtonState<T> createState() => _FocusablePopupMenuButtonState<T>();
+}
+
+class _FocusablePopupMenuButtonState<T> extends State<FocusablePopupMenuButton<T>> {
+  bool _isFocused = false;
+
+  void _showMenu(BuildContext context) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    showMenu<T>(
+      context: context,
+      position: position,
+      items: widget.itemBuilder(context),
+    ).then((T? newValue) {
+      if (newValue != null) {
+        widget.onSelected(newValue);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showMenu(context),
+      child: FocusableActionDetector(
+        onFocusChange: (isFocused) => setState(() => _isFocused = isFocused),
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(onInvoke: (intent) => _showMenu(context)),
+        },
+        child: Container(
+          padding: const EdgeInsets.all(8.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            color: _isFocused ? Theme.of(context).colorScheme.primary.withOpacity(0.5) : Colors.transparent,
+          ),
+          child: widget.child,
         ),
       ),
     );
