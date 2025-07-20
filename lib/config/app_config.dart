@@ -1,9 +1,12 @@
 
 import '../models/video_source.dart';
+import '../parsers/eporner_parser.dart';
 import '../parsers/xvideos_parser.dart';
 import '../parsers/pornhub_parser.dart';
 import '../parsers/cg_parser.dart';
 import '../parsers/xnxx_parser.dart';
+import '../parsers/xhamster_parser.dart';
+import '../parsers/spankbang_parser.dart';
 
 class AppConfig {
   static final List<VideoSource> videoSources = [
@@ -30,6 +33,24 @@ class AppConfig {
       baseUrl: 'https://www.xnxx.com/hits',
       paginatedUrlTemplate: 'https://www.xnxx.com/hits/%d',
       parser: XNXXParser(),
+    ),
+    VideoSource(
+      name: 'xHamster',
+      baseUrl: 'https://zh.xhamster.com/',
+      paginatedUrlTemplate: 'https://zh.xhamster.com/%d',
+      parser: XHamsterParser(),
+    ),
+    VideoSource(
+      name: 'Eporner',
+      baseUrl: 'https://www.eporner.com/',
+      paginatedUrlTemplate: 'https://www.eporner.com/%d/',
+      parser: EpornerParser(),
+    ),
+    VideoSource(
+      name: 'SpankBang',
+      baseUrl: 'https://spankbang.com/trending_videos/',
+      paginatedUrlTemplate: 'https://spankbang.com/trending_videos/%d/',
+      parser: SpankBangParser(),
     ),
   ];
 }

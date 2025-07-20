@@ -23,7 +23,7 @@ class ScrapingService {
         url = source.baseUrl;
       }
 
-      final response = await http.get(Uri.parse(url), headers: headers);
+      final response = await http.get(Uri.parse(url)/*, headers: headers*/);
 
       if (response.statusCode == 200) {
         return await source.parser.parse(htmlContent: response.body, baseUrl: source.baseUrl);
