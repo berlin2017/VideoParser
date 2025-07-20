@@ -38,9 +38,9 @@ dependencies:
   html: ^0.15.4
   video_player: ^2.10.0
   provider: ^6.1.2
-  media_kit: ^1.1.10
-  media_kit_video: ^1.2.4
-  media_kit_libs_video: ^1.0.4
+  media_kit: ^1.1.11 # Primary package.
+  media_kit_video: ^1.2.5 # For video rendering.
+  media_kit_libs_video: ^1.0.5 # Native video dependencies.
   html_unescape: ^2.0.0
 
 dev_dependencies:

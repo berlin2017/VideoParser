@@ -1,8 +1,10 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+
 import '../models/video_format.dart' as app_models;
 
 // Main Widget
@@ -25,21 +27,35 @@ class BasePlayerScreen extends StatefulWidget {
 // State
 class _BasePlayerScreenState extends State<BasePlayerScreen> {
   late final Player _player = Player(
-    configuration: const PlayerConfiguration(protocolWhitelist: [
-      'file',
-      'http',
-      'https',
-      'tcp',
-      'tls',
-      'crypto',
-      'hls',
-      'applehttp',
-      'udp',
-      'rtp',
-      'data',
-      'httpproxy'
-          'file', 'http', 'https', 'tcp', 'tls', 'crypto', 'hls', 'applehttp', 'udp', 'rtp', 'data', 'httpproxy'
-    ]),
+    configuration: const PlayerConfiguration(
+      protocolWhitelist: [
+        'file',
+        'http',
+        'https',
+        'tcp',
+        'tls',
+        'crypto',
+        'hls',
+        'applehttp',
+        'udp',
+        'rtp',
+        'data',
+        'httpproxy'
+            'file',
+        'http',
+        'https',
+        'tcp',
+        'tls',
+        'crypto',
+        'hls',
+        'applehttp',
+        'udp',
+        'rtp',
+        'data',
+        'httpproxy',
+      ],
+      logLevel: MPVLogLevel.debug,
+    ),
   );
   late final VideoController _videoController;
 
@@ -48,6 +64,7 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
   bool _isOverlayVisible = true;
   Timer? _hideOverlayTimer;
   bool _isLandscape = true;
+  bool _isPoppingWithAppBarButton = false; // Flag to differentiate pop source
 
   // Focus Nodes for D-Pad Navigation
   final FocusNode _mainFocusNode = FocusNode();
@@ -62,7 +79,12 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _videoController = VideoController(_player);
+    _videoController = VideoController(
+      _player,
+      configuration: const VideoControllerConfiguration(
+        enableHardwareAcceleration: true,
+      ),
+    );
     _initializeUI();
   }
 
@@ -80,14 +102,13 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-       if(mounted) {
-         _mainFocusNode.requestFocus();
-         _playPauseButtonFocusNode.requestFocus();
-         _startHideOverlayTimer();
-       }
+      if (mounted) {
+        _mainFocusNode.requestFocus();
+        _playPauseButtonFocusNode.requestFocus();
+        _startHideOverlayTimer();
+      }
     });
   }
-
 
   @override
   void dispose() {
@@ -108,13 +129,22 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
 
   // --- UI & Rotation Management ---
   void _setLandscape() {
-    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
   void _setPortrait() {
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: SystemUiOverlay.values);
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: SystemUiOverlay.values,
+    );
   }
 
   void _toggleRotation() {
@@ -147,21 +177,21 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
   }
 
   void _toggleOverlay({required bool isDpadInteraction}) {
-      setState(() {
-        _isOverlayVisible = !_isOverlayVisible;
-        if (_isOverlayVisible) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if(mounted) _playPauseButtonFocusNode.requestFocus();
-          });
-          if (isDpadInteraction) {
-            _cancelHideOverlayTimer();
-          } else {
-            _startHideOverlayTimer();
-          }
+    setState(() {
+      _isOverlayVisible = !_isOverlayVisible;
+      if (_isOverlayVisible) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _playPauseButtonFocusNode.requestFocus();
+        });
+        if (isDpadInteraction) {
+          _cancelHideOverlayTimer();
         } else {
-          _mainFocusNode.requestFocus();
+          _startHideOverlayTimer();
         }
-      });
+      } else {
+        _mainFocusNode.requestFocus();
+      }
+    });
   }
 
   // --- Playback Management ---
@@ -171,7 +201,10 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
       int bRes = int.tryParse(b.resolution?.split('x').last ?? '0') ?? 0;
       return bRes.compareTo(aRes);
     });
-    return formats.firstWhere((f) => f.protocol.contains('m3u8'), orElse: () => formats.first);
+    return formats.firstWhere(
+      (f) => f.protocol.contains('m3u8'),
+      orElse: () => formats.first,
+    );
   }
 
   Future<void> _playFormat(app_models.VideoFormat format) async {
@@ -182,12 +215,14 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
         final detailUri = Uri.parse(widget.detailPageUrl!);
         url = detailUri.resolve(url).toString();
       } catch (e) {
-        if (mounted) setState(() => _playerError = 'Error resolving video URL: $e');
+        if (mounted)
+          setState(() => _playerError = 'Error resolving video URL: $e');
         return;
       }
     }
     final httpHeaders = <String, String>{
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+      'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
     };
     if (widget.detailPageUrl != null) {
       httpHeaders['Referer'] = widget.detailPageUrl!;
@@ -212,6 +247,13 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
   }
 
   // --- Keyboard & D-Pad Handling ---
+  void _popWithAppBarButton() {
+    // Set the flag directly without setState. This ensures the value is updated
+    // synchronously before _onWillPop is called.
+    _isPoppingWithAppBarButton = true;
+    Navigator.of(context).pop();
+  }
+
   KeyEventResult _handleKeyEvent(FocusNode node, RawKeyEvent event) {
     if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
 
@@ -223,12 +265,16 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
       } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
         _seekForward();
         return KeyEventResult.handled;
-      } else if (event.logicalKey == LogicalKeyboardKey.arrowUp || event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+          event.logicalKey == LogicalKeyboardKey.arrowDown) {
         _toggleOverlay(isDpadInteraction: true); // Show controls, no auto-hide
         return KeyEventResult.handled;
-      } else if (event.logicalKey == LogicalKeyboardKey.select || event.logicalKey == LogicalKeyboardKey.enter) {
+      } else if (event.logicalKey == LogicalKeyboardKey.select ||
+          event.logicalKey == LogicalKeyboardKey.enter) {
         _player.playOrPause();
-        _toggleOverlay(isDpadInteraction: false); // Show controls, with auto-hide
+        _toggleOverlay(
+          isDpadInteraction: false,
+        ); // Show controls, with auto-hide
         return KeyEventResult.handled;
       }
     }
@@ -237,6 +283,10 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
   }
 
   Future<bool> _onWillPop() async {
+    if (_isPoppingWithAppBarButton) {
+      return true; // Allow pop if initiated by app bar button
+    }
+
     // TV-specific back button logic
     if (_isOverlayVisible) {
       setState(() {
@@ -265,16 +315,29 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
               child: Builder(
                 builder: (context) {
                   if (_playerError != null) {
-                    return Center(child: Text(_playerError!, style: const TextStyle(color: Colors.white)));
+                    return Center(
+                      child: Text(
+                        _playerError!,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    );
                   }
                   if (widget.formats.isEmpty) {
-                    return const Center(child: Text('No video sources found.', style: const TextStyle(color: Colors.white)));
+                    return const Center(
+                      child: Text(
+                        'No video sources found.',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    );
                   }
 
                   return Stack(
                     alignment: Alignment.center,
                     children: [
-                      Video(controller: _videoController, controls: NoVideoControls),
+                      Video(
+                        controller: _videoController,
+                        controls: NoVideoControls,
+                      ),
                       AnimatedOpacity(
                         opacity: _isOverlayVisible ? 1.0 : 0.0,
                         duration: const Duration(milliseconds: 300),
@@ -285,6 +348,8 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
                             videoTitle: widget.videoTitle,
                             formats: widget.formats,
                             currentFormat: _currentFormat,
+                            onAppBarBackPressed: _popWithAppBarButton,
+                            // Pass the new method
                             onQualityChanged: (format) => _playFormat(format),
                             onToggleRotation: _toggleRotation,
                             startHideOverlayTimer: _startHideOverlayTimer,
@@ -318,6 +383,7 @@ class CustomVideoControls extends StatelessWidget {
   final String videoTitle;
   final List<app_models.VideoFormat> formats;
   final app_models.VideoFormat? currentFormat;
+  final VoidCallback onAppBarBackPressed; // Add this
   final ValueChanged<app_models.VideoFormat> onQualityChanged;
   final VoidCallback onToggleRotation;
   final VoidCallback startHideOverlayTimer;
@@ -338,6 +404,7 @@ class CustomVideoControls extends StatelessWidget {
     required this.videoTitle,
     required this.formats,
     required this.currentFormat,
+    required this.onAppBarBackPressed, // Add this
     required this.onQualityChanged,
     required this.onToggleRotation,
     required this.startHideOverlayTimer,
@@ -366,11 +433,13 @@ class CustomVideoControls extends StatelessWidget {
             children: [
               _FocusableControl(
                 focusNode: backButtonFocusNode,
-                onPressed: () => Navigator.pop(context),
+                onPressed: onAppBarBackPressed,
+                // Use the new method
                 startHideOverlayTimer: startHideOverlayTimer,
                 cancelHideOverlayTimer: cancelHideOverlayTimer,
                 onKey: (node, event) {
-                  if (event is RawKeyDownEvent && event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                  if (event is RawKeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.arrowDown) {
                     playPauseButtonFocusNode.requestFocus();
                     return KeyEventResult.handled;
                   }
@@ -378,7 +447,13 @@ class CustomVideoControls extends StatelessWidget {
                 },
                 child: const BackButton(color: Colors.white),
               ),
-              Expanded(child: Text(videoTitle, style: const TextStyle(color: Colors.white, fontSize: 16), overflow: TextOverflow.ellipsis)),
+              Expanded(
+                child: Text(
+                  videoTitle,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           const Spacer(),
@@ -408,7 +483,11 @@ class CustomVideoControls extends StatelessWidget {
                   }
                   return KeyEventResult.ignored;
                 },
-                child: const Icon(Icons.replay_10, color: Colors.white, size: 36),
+                child: const Icon(
+                  Icons.replay_10,
+                  color: Colors.white,
+                  size: 36,
+                ),
               ),
               const SizedBox(width: 40),
               StreamBuilder<bool>(
@@ -421,23 +500,33 @@ class CustomVideoControls extends StatelessWidget {
                     startHideOverlayTimer: startHideOverlayTimer,
                     cancelHideOverlayTimer: cancelHideOverlayTimer,
                     onKey: (node, event) {
-                      if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+                      if (event is! RawKeyDownEvent)
+                        return KeyEventResult.ignored;
                       if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
                         replayButtonFocusNode.requestFocus();
                         return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                      } else if (event.logicalKey ==
+                          LogicalKeyboardKey.arrowRight) {
                         forwardButtonFocusNode.requestFocus();
                         return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                      } else if (event.logicalKey ==
+                          LogicalKeyboardKey.arrowUp) {
                         backButtonFocusNode.requestFocus();
                         return KeyEventResult.handled;
-                      } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                      } else if (event.logicalKey ==
+                          LogicalKeyboardKey.arrowDown) {
                         speedButtonFocusNode.requestFocus();
                         return KeyEventResult.handled;
                       }
                       return KeyEventResult.ignored;
                     },
-                    child: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.white, size: 64),
+                    child: Icon(
+                      isPlaying
+                          ? Icons.pause_circle_filled
+                          : Icons.play_circle_filled,
+                      color: Colors.white,
+                      size: 64,
+                    ),
                   );
                 },
               ),
@@ -445,8 +534,8 @@ class CustomVideoControls extends StatelessWidget {
               _FocusableControl(
                 focusNode: forwardButtonFocusNode,
                 onPressed: () {
-                    final current = player.state.position;
-                    player.seek(current + const Duration(seconds: 10));
+                  final current = player.state.position;
+                  player.seek(current + const Duration(seconds: 10));
                 },
                 startHideOverlayTimer: startHideOverlayTimer,
                 cancelHideOverlayTimer: cancelHideOverlayTimer,
@@ -464,41 +553,60 @@ class CustomVideoControls extends StatelessWidget {
                   }
                   return KeyEventResult.ignored;
                 },
-                child: const Icon(Icons.forward_10, color: Colors.white, size: 36),
+                child: const Icon(
+                  Icons.forward_10,
+                  color: Colors.white,
+                  size: 36,
+                ),
               ),
             ],
           ),
           const Spacer(),
           // Bottom Bar: Progress, Timers, and Settings
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 8.0,
+            ),
             child: Column(
               children: [
                 Row(
                   children: [
-                    StreamBuilder<Duration>(stream: player.stream.position, builder: (context, snapshot) => Text(_formatDuration(snapshot.data ?? Duration.zero), style: const TextStyle(color: Colors.white))),
+                    StreamBuilder<Duration>(
+                      stream: player.stream.position,
+                      builder: (context, snapshot) => Text(
+                        _formatDuration(snapshot.data ?? Duration.zero),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
                     Expanded(
                       child: StreamBuilder<Duration>(
                         stream: player.stream.position,
                         builder: (context, positionSnapshot) {
-                          final position = positionSnapshot.data ?? Duration.zero;
+                          final position =
+                              positionSnapshot.data ?? Duration.zero;
                           final duration = player.state.duration;
                           return Slider(
                             value: position.inSeconds.toDouble(),
                             min: 0.0,
-                            max: duration.inSeconds.toDouble().isNaN ? 0.0 : duration.inSeconds.toDouble(),
+                            max: duration.inSeconds.toDouble().isNaN
+                                ? 0.0
+                                : duration.inSeconds.toDouble(),
                             onChanged: (value) {
-                               cancelHideOverlayTimer();
-                               player.seek(Duration(seconds: value.toInt()));
+                              cancelHideOverlayTimer();
+                              player.seek(Duration(seconds: value.toInt()));
                             },
                             onChangeEnd: (value) {
-                               startHideOverlayTimer();
+                              startHideOverlayTimer();
                             },
                           );
                         },
                       ),
                     ),
-                    Text(_formatDuration(player.state.duration), style: const TextStyle(color: Colors.white)),
+                    Text(
+                      _formatDuration(player.state.duration),
+                      style: const TextStyle(color: Colors.white),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -512,36 +620,66 @@ class CustomVideoControls extends StatelessWidget {
                         startHideOverlayTimer: startHideOverlayTimer,
                         cancelHideOverlayTimer: cancelHideOverlayTimer,
                         onPressed: () {
-                          final RenderBox button = context.findRenderObject() as RenderBox;
-                          final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+                          final RenderBox button =
+                              context.findRenderObject() as RenderBox;
+                          final RenderBox overlay =
+                              Overlay.of(context).context.findRenderObject()
+                                  as RenderBox;
                           final RelativeRect position = RelativeRect.fromRect(
                             Rect.fromPoints(
-                              button.localToGlobal(Offset.zero, ancestor: overlay),
-                              button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+                              button.localToGlobal(
+                                Offset.zero,
+                                ancestor: overlay,
+                              ),
+                              button.localToGlobal(
+                                button.size.bottomRight(Offset.zero),
+                                ancestor: overlay,
+                              ),
                             ),
                             Offset.zero & overlay.size,
                           );
                           showMenu<double>(
                             context: context,
                             position: position,
-                            items: [0.5, 1.0, 1.5, 2.0].map((rate) => PopupMenuItem(value: rate, child: Text('${rate}x'))).toList(),
+                            items: [0.5, 1.0, 1.5, 2.0]
+                                .map(
+                                  (rate) => PopupMenuItem(
+                                    value: rate,
+                                    child: Text('${rate}x'),
+                                  ),
+                                )
+                                .toList(),
                           ).then((rate) {
                             if (rate != null) player.setRate(rate);
                             startHideOverlayTimer();
                           });
                         },
                         onKey: (node, event) {
-                          if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+                          if (event is! RawKeyDownEvent)
+                            return KeyEventResult.ignored;
                           if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                             playPauseButtonFocusNode.requestFocus();
                             return KeyEventResult.handled;
-                          } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          } else if (event.logicalKey ==
+                              LogicalKeyboardKey.arrowRight) {
                             qualityButtonFocusNode.requestFocus();
                             return KeyEventResult.handled;
                           }
                           return KeyEventResult.ignored;
                         },
-                        child: Row(children: [const Icon(Icons.speed, color: Colors.white), const SizedBox(width: 4), StreamBuilder<double>(stream: player.stream.rate, builder: (context, snapshot) => Text('${snapshot.data ?? 1.0}x', style: const TextStyle(color: Colors.white)))]),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.speed, color: Colors.white),
+                            const SizedBox(width: 4),
+                            StreamBuilder<double>(
+                              stream: player.stream.rate,
+                              builder: (context, snapshot) => Text(
+                                '${snapshot.data ?? 1.0}x',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     Builder(
@@ -551,39 +689,67 @@ class CustomVideoControls extends StatelessWidget {
                         startHideOverlayTimer: startHideOverlayTimer,
                         cancelHideOverlayTimer: cancelHideOverlayTimer,
                         onPressed: () {
-                          final RenderBox button = context.findRenderObject() as RenderBox;
-                          final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+                          final RenderBox button =
+                              context.findRenderObject() as RenderBox;
+                          final RenderBox overlay =
+                              Overlay.of(context).context.findRenderObject()
+                                  as RenderBox;
                           final RelativeRect position = RelativeRect.fromRect(
                             Rect.fromPoints(
-                              button.localToGlobal(Offset.zero, ancestor: overlay),
-                              button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+                              button.localToGlobal(
+                                Offset.zero,
+                                ancestor: overlay,
+                              ),
+                              button.localToGlobal(
+                                button.size.bottomRight(Offset.zero),
+                                ancestor: overlay,
+                              ),
                             ),
                             Offset.zero & overlay.size,
                           );
                           showMenu<app_models.VideoFormat>(
                             context: context,
                             position: position,
-                            items: formats.map((format) => PopupMenuItem(value: format, child: Text(format.displayName))).toList(),
+                            items: formats
+                                .map(
+                                  (format) => PopupMenuItem(
+                                    value: format,
+                                    child: Text(format.displayName),
+                                  ),
+                                )
+                                .toList(),
                           ).then((format) {
                             if (format != null) onQualityChanged(format);
                             startHideOverlayTimer();
                           });
                         },
                         onKey: (node, event) {
-                          if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+                          if (event is! RawKeyDownEvent)
+                            return KeyEventResult.ignored;
                           if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                             playPauseButtonFocusNode.requestFocus();
                             return KeyEventResult.handled;
-                          } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                          } else if (event.logicalKey ==
+                              LogicalKeyboardKey.arrowLeft) {
                             speedButtonFocusNode.requestFocus();
                             return KeyEventResult.handled;
-                          } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                          } else if (event.logicalKey ==
+                              LogicalKeyboardKey.arrowRight) {
                             rotationButtonFocusNode.requestFocus();
                             return KeyEventResult.handled;
                           }
                           return KeyEventResult.ignored;
                         },
-                        child: Row(children: [const Icon(Icons.hd, color: Colors.white), const SizedBox(width: 4), Text(currentFormat?.displayName ?? 'Quality', style: const TextStyle(color: Colors.white))]),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.hd, color: Colors.white),
+                            const SizedBox(width: 4),
+                            Text(
+                              currentFormat?.displayName ?? 'Quality',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     _FocusableControl(
@@ -592,17 +758,23 @@ class CustomVideoControls extends StatelessWidget {
                       startHideOverlayTimer: startHideOverlayTimer,
                       cancelHideOverlayTimer: cancelHideOverlayTimer,
                       onKey: (node, event) {
-                        if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
+                        if (event is! RawKeyDownEvent)
+                          return KeyEventResult.ignored;
                         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
                           playPauseButtonFocusNode.requestFocus();
                           return KeyEventResult.handled;
-                        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                        } else if (event.logicalKey ==
+                            LogicalKeyboardKey.arrowLeft) {
                           qualityButtonFocusNode.requestFocus();
                           return KeyEventResult.handled;
                         }
                         return KeyEventResult.ignored;
                       },
-                      child: const Icon(Icons.screen_rotation, color: Colors.white, size: 28),
+                      child: const Icon(
+                        Icons.screen_rotation,
+                        color: Colors.white,
+                        size: 28,
+                      ),
                     ),
                   ],
                 ),
@@ -657,10 +829,14 @@ class __FocusableControlState extends State<_FocusableControl> {
         if (event is! RawKeyDownEvent) return KeyEventResult.ignored;
 
         final key = event.logicalKey;
-        if (key == LogicalKeyboardKey.arrowUp || key == LogicalKeyboardKey.arrowDown || key == LogicalKeyboardKey.arrowLeft || key == LogicalKeyboardKey.arrowRight) {
+        if (key == LogicalKeyboardKey.arrowUp ||
+            key == LogicalKeyboardKey.arrowDown ||
+            key == LogicalKeyboardKey.arrowLeft ||
+            key == LogicalKeyboardKey.arrowRight) {
           // Directional keys cancel the timer.
           widget.cancelHideOverlayTimer();
-        } else if (key == LogicalKeyboardKey.select || key == LogicalKeyboardKey.enter) {
+        } else if (key == LogicalKeyboardKey.select ||
+            key == LogicalKeyboardKey.enter) {
           // Activation keys reset the timer.
           widget.startHideOverlayTimer();
           widget.onPressed?.call();
@@ -679,8 +855,12 @@ class __FocusableControlState extends State<_FocusableControl> {
           padding: const EdgeInsets.all(8.0),
           decoration: BoxDecoration(
             shape: widget.shape,
-            borderRadius: widget.shape == BoxShape.rectangle ? BorderRadius.circular(8) : null,
-            color: _isFocused ? Theme.of(context).colorScheme.primary.withOpacity(0.5) : Colors.transparent,
+            borderRadius: widget.shape == BoxShape.rectangle
+                ? BorderRadius.circular(8)
+                : null,
+            color: _isFocused
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.5)
+                : Colors.transparent,
           ),
           child: widget.child,
         ),
