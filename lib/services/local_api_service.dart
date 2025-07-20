@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 import '../models/playback_details.dart';
 
 class LocalApiService {
-  final String _baseUrl = 'http://127.0.0.1:8080/api/video-info';
+  final String _baseUrl = 'http://192.168.1.199:8080/api/video-info';
 
   Future<PlaybackDetails> fetchPlaybackDetails(String detailPageUrl) async {
     try {
