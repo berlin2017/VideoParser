@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
@@ -149,14 +151,31 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
 
   void _toggleRotation() {
     _cancelHideOverlayTimer(); // D-pad like interaction
-    setState(() {
-      _isLandscape = !_isLandscape;
-      if (_isLandscape) {
-        _setLandscape();
-      } else {
-        _setPortrait();
-      }
-    });
+
+    if (kIsWeb || (Platform.isWindows)) {
+      _toggleFullScreen();
+    } else {
+      setState(() {
+        _isLandscape = !_isLandscape;
+        if (_isLandscape) {
+          _setLandscape();
+        } else {
+          _setPortrait();
+        }
+      });
+    }
+  }
+
+  void _toggleFullScreen() {
+    if (kIsWeb) {
+      // Web fullscreen logic
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else if (Platform.isWindows) {
+      // Windows fullscreen logic
+      // This is a placeholder. You might need a package like `fullscreen_window`
+      // to properly implement this on Windows.
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
   }
 
   // --- Overlay Management ---
@@ -248,10 +267,14 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
 
   // --- Keyboard & D-Pad Handling ---
   void _popWithAppBarButton() {
-    // Set the flag directly without setState. This ensures the value is updated
-    // synchronously before _onWillPop is called.
-    _isPoppingWithAppBarButton = true;
-    Navigator.of(context).pop();
+    // For web and windows, we just pop directly.
+    if (kIsWeb || Platform.isWindows) {
+      Navigator.of(context).pop();
+    } else {
+      // For other platforms, use the existing logic.
+      _isPoppingWithAppBarButton = true;
+      Navigator.of(context).pop();
+    }
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, RawKeyEvent event) {
@@ -288,7 +311,7 @@ class _BasePlayerScreenState extends State<BasePlayerScreen> {
     }
 
     // TV-specific back button logic
-    if (_isOverlayVisible) {
+    if (!kIsWeb && !Platform.isWindows && _isOverlayVisible) {
       setState(() {
         _isOverlayVisible = false;
         _mainFocusNode.requestFocus(); // Clear focus
